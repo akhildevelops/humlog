@@ -1,17 +1,18 @@
 use std::io::{BufRead, BufReader};
 use std::process::Command as StdCommand;
 use std::process::Stdio;
-use std::sync::mpsc::{self, Iter, Receiver};
-use std::thread;
+use std::sync::{Arc, Mutex};
+use std::thread::{self, JoinHandle};
 pub struct Command {
     pub command: String,
 }
 
 impl Command {
-    pub fn run(&self) -> CommandOutput<String> {
-        let (tx, rx) = mpsc::channel();
+    pub fn run(&self) -> CommandOutput<String, ()> {
+        let buffer = Arc::new(Mutex::new(vec![]));
         let command = self.command.clone();
-        thread::spawn(move || {
+        let thread_buffer = Arc::clone(&buffer);
+        let handle = thread::spawn(move || {
             let mut child_process = StdCommand::new(command)
                 .stdout(Stdio::piped())
                 .spawn()
@@ -25,32 +26,37 @@ impl Command {
             loop {
                 match br.read_line(&mut s) {
                     Ok(0) => break,
-                    Ok(_) => tx
-                        .send(s.clone())
-                        .expect("Cannot communicate with the receiver"),
+                    Ok(_) => {
+                        let mut buffer = thread_buffer.lock().unwrap();
+                        buffer.push(s.clone());
+                    }
                     Err(_) => panic!("Error in transmitting"),
                 }
                 s.clear();
             }
         });
-        CommandOutput { output: rx }
+        CommandOutput {
+            output: buffer,
+            handle,
+        }
     }
 }
 
-pub struct CommandOutput<T> {
-    output: Receiver<T>,
+pub struct CommandOutput<T, U> {
+    pub output: Arc<Mutex<Vec<T>>>,
+    pub handle: JoinHandle<U>,
 }
 
-impl<T> CommandOutput<T> {
-    pub fn iter<'a>(&'a self) -> COIter<'a, T> {
-        COIter(self.output.iter())
-    }
-}
+// impl<T> CommandOutput<T> {
+//     pub fn iter<'a>(&'a self) -> COIter<'a, T> {
+//         COIter(self.output.lock().unwrap().iter().collect())
+//     }
+// }
 
-pub struct COIter<'a, T>(Iter<'a, T>);
-impl<'a, T> Iterator for COIter<'a, T> {
-    type Item = T;
-    fn next(&mut self) -> Option<Self::Item> {
-        self.0.next()
-    }
-}
+// pub struct COIter<'a, T>(Iter<'a, T>);
+// impl<'a, T> Iterator for COIter<'a, T> {
+//     type Item = &'a T;
+//     fn next(&mut self) -> Option<Self::Item> {
+//         self.0.next()
+//     }
+// }
