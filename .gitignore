@@ -19,3 +19,8 @@ Cargo.lock
 /target
 
 /scrap
+
+log.txt
+scrap/
+
+.vscode/
