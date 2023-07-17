@@ -5,7 +5,7 @@ fn main() {
     let command = get_command();
     let stdout = io::stdout();
     let lock = stdout.lock();
-    let mut w = io::BufWriter::with_capacity(8 * 1024, lock);
+    let mut w = io::BufWriter::new(lock);
     let op = Command { command }.run();
     loop {
         match op.output.lock().unwrap().pop() {
